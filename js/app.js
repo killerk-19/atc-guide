@@ -5,7 +5,7 @@
 // CSP forbids inline handlers, so every interaction goes through the delegated
 // listeners at the bottom (data-action / data-field attributes).
 
-const VERSION = "1.0.1";
+const VERSION = "1.1.0";
 const STORE_KEY = "atcg.profile.v1";
 const CHECK_KEY = "atcg.checklist.v1";
 
@@ -336,6 +336,8 @@ const pages = {
             <div class="benefit-head"><strong>${esc(b.name)}</strong><span class="badge ${s.cls}">${esc(s.text)}</span></div>
             <div class="dots" aria-label="לפי שלב">${b.stages.map((on, i) => `<span class="${on ? "on" : ""}" title="${esc(d.stages[i].name)}">${on ? "✓" : "–"}</span>`).join("")}</div>
             <p>${esc(b.text)}</p>${extra}
+            ${b.details ? `<ul class="details">${b.details.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+            ${b.link && /^https:\/\//.test(b.link.href) ? `<p><a href="${esc(b.link.href)}" target="_blank" rel="noopener noreferrer">${esc(b.link.label)}</a></p>` : ""}
             ${b.disputed ? disputedBlock(b.disputed) : ""}
           </div>`;
       }).join("");

@@ -223,3 +223,5 @@ tr.mine td { background: var(--accent-soft); font-weight: 700; }
 @media (max-width: 380px) {
   .row, .compare { grid-template-columns: 1fr; }
 }
+.details { margin: 6px 0 0; padding-right: 18px; font-size: 14px; }
+.details li { margin-bottom: 2px; }
