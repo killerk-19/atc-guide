@@ -3,13 +3,14 @@
 // Offline support. Network first, so an updated guide.json or app.js shows up on
 // the next visit; the cache is only the fallback when there is no connection.
 
-const CACHE = "atcg-v10";
+const CACHE = "atcg-v11";
 const FILES = [
   "./",
   "index.html",
   "css/style.css",
   "js/app.js",
   "data/guide.json",
+  "data/paycheck.json",
   "manifest.webmanifest",
   "icons/icon.svg",
 ];

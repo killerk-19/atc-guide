@@ -5,11 +5,12 @@
 // CSP forbids inline handlers, so every interaction goes through the delegated
 // listeners at the bottom (data-action / data-field attributes).
 
-const VERSION = "1.3.1";
+const VERSION = "1.4.0";
 const STORE_KEY = "atcg.profile.v1";
 const CHECK_KEY = "atcg.checklist.v1";
+const SLIPCHECK_KEY = "atcg.slipcheck.v1";
 
-const state = { data: null, profile: null, checks: {} };
+const state = { data: null, pay: null, profile: null, checks: {}, slipChecks: {}, guideOpen: {} };
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -38,6 +39,7 @@ function storage(key) {
 }
 const profileStore = storage(STORE_KEY);
 const checkStore = storage(CHECK_KEY);
+const slipCheckStore = storage(SLIPCHECK_KEY);
 
 // ---- dates -----------------------------------------------------------------
 
@@ -277,7 +279,9 @@ const pages = {
            הקרנות, וכללי המשמרות והשעות הנוספות.</p>
       </div>`;
     if (!m) {
-      return `<h1>ברוכים הבאים</h1>${intro}${profileForm()}${countdownTiles(null)}`;
+      return `<h1>ברוכים הבאים</h1>${intro}${profileForm()}
+        <div class="card hint"><p>אחרי שמירת תאריך תחילת העבודה יופיע כאן <strong>מה לבדוק בתלוש</strong> — השורות שאמורות להופיע אצלך. ובינתיים: <a href="#/guide">איך קוראים תלוש ודוח פיצול ←</a></p></div>
+        ${countdownTiles(null)}`;
     }
     const st = d.stages[m.stage];
     return `<h1>שלום 👋</h1>
@@ -288,8 +292,10 @@ const pages = {
         <div><span class="muted">שעות בשבוע</span><strong>${num(m.hagdar ? 38.5 : 42, 1)}</strong></div>
       </div>
       ${countdownTiles(m)}
+      ${slipCheck(m)}
       <div class="card links">
         <a href="#/milestones">אבני הדרך שלי ←</a>
+        <a href="#/guide">איך קוראים תלוש ←</a>
         <a href="#/benefits">מה מגיע לי ←</a>
         <a href="#/payments">תשלומים וקרנות ←</a>
         <button type="button" class="ghost" data-action="ics">📅 הוספה ליומן</button>
@@ -491,6 +497,29 @@ const pages = {
       </section>`;
   },
 
+  guide() {
+    if (!state.pay) return `<h1>מדריך תלוש</h1><div class="card"><p>לא הצלחתי לטעון את המדריך. נסו לרענן.</p></div>`;
+    const { doc, sel } = guideRoute();
+    const g = state.pay[doc];
+    const tab = (d, label) => `<a href="#/guide/${d}" class="seg${doc === d ? " on" : ""}"${doc === d ? ` aria-current="page"` : ""}>${label}</a>`;
+    const start = g.zones[0].id;
+    return `<h1>איך קוראים ${doc === "slip" ? "תלוש שכר" : "דוח פיצול נוכחות"}</h1>
+      <nav class="segs" aria-label="בחירת מסמך">${tab("slip", "תלוש שכר")}${tab("pzl", "דוח פיצול נוכחות")}</nav>
+      <div class="card">
+        <p>${esc(g.intro)}</p>
+        <p class="lag"><strong>חשוב:</strong> ${esc(state.pay.lag_note)}</p>
+        ${sel ? "" : `<button type="button" class="primary" data-action="gsel" data-doc="${doc}" data-sel="z.${start}">▶ סיור צעד אחר צעד</button>`}
+      </div>
+      ${doc === "slip" ? `<div class="card">
+        <label class="inline">חיפוש שורה בתלוש לפי סמל או שם
+          <input type="search" class="search" placeholder="למשל 1120 או הבראה" data-field="gsearch" value="${esc(state.gsearch || "")}">
+        </label>
+        <div id="gresults" class="gresults">${guideSearchResults(state.gsearch)}</div>
+      </div>` : ""}
+      <p class="muted small">${doc === "slip" ? "תלוש לדוגמה — סכמטי, בלי סכומים אמיתיים. בתלוש האמיתי הנתונים האישיים מופיעים משמאל לטבלת התשלומים." : "דוח לדוגמה — סכמטי, עם ימים לדוגמה. לחצו על כותרת עמודה, על שורה או על מונה."}</p>
+      ${doc === "slip" ? slipMock(sel) : pzlMock(sel)}`;
+  },
+
   checklist() {
     const m = model();
     const relevant = m ? relevantChecklist(m) : new Set(["start", "monthly"]);
@@ -535,6 +564,328 @@ function relevantChecklist(m) {
   if (m.stage === 1 && daysBetween(today(), m.stageDate(2)) < 120) r.add("5y");
   if (m.nextGrade && daysBetween(today(), m.nextGrade) < 90 && daysBetween(today(), m.nextGrade) > -60) r.add("grade");
   return r;
+}
+
+// ---- what to check on my payslip (home card) --------------------------------
+
+function ymOf(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function stageAt(m, date) {
+  if (m.status === "kavua") return 2;
+  const t = yearsBetween(m.start, date);
+  return t >= 5 ? 2 : t >= 2 ? 1 : 0;
+}
+
+// Slip months to choose from: this month's (paid on the 1st of next month) and
+// the twelve before it. Default: the last one already paid.
+function slipMonthOptions() {
+  const t = today();
+  const out = [];
+  for (let k = 0; k >= -12; k--) out.push(new Date(t.getFullYear(), t.getMonth() + k, 1));
+  return out;
+}
+
+function lineApplies(l, ctx) {
+  switch (l.expect) {
+    case "always": return true;
+    case "y2": return ctx.stage >= 1;
+    case "kavua": return ctx.stage >= 2 || (!!l.amach_ok && ctx.status === "amach");
+    case "hagdar": return ctx.hagdar;
+    case "grade_lt23": return !ctx.grade || ctx.grade < 23;
+    case "grade_ge23": return !!ctx.grade && ctx.grade >= 23 && ctx.stage >= 1;
+    default: return false;
+  }
+}
+
+function periodicThisMonth(l, ctx) {
+  return ctx.stage >= 1 && state.data.periodic.some((pm) => pm.key.startsWith(l.periodic) && pm.slip_month === ctx.month);
+}
+
+function notYetText(l, m) {
+  if (l.expect === "y2") return `מ-${m.stageDate(1).toLocaleDateString("he-IL")}`;
+  if (l.expect === "kavua") return `מהקביעות, ${m.stageDate(2).toLocaleDateString("he-IL")}`;
+  if (l.expect === "hagdar") return "אחרי מבחן הגדר מרחב";
+  return "";
+}
+
+function rechevNote(l, grade) {
+  const lvl = rechevLevel(grade);
+  if (!l.rechev || !lvl) return "";
+  const v = l.rechev === "variable" ? (lvl.km * state.data.rechev_levels.km_rate) / 12 : lvl[l.rechev];
+  return `רמה ${esc(lvl.level)}: ${shekel(v, l.rechev === "variable" ? 2 : 0)} למשרה מלאה`;
+}
+
+function slipCheck(m) {
+  const pay = state.pay;
+  if (!pay) return "";
+  const opts = slipMonthOptions();
+  const ym = state.slipMonth || ymOf(opts[1]);
+  const [y, mo] = ym.split("-").map(Number);
+  const first = new Date(y, mo - 1, 1);
+  const end = new Date(y, mo, 0);
+  const select = `<label class="inline">תלוש של חודש
+      <select data-field="slipmonth">${opts.map((d) => {
+        const v = ymOf(d);
+        const paid = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        return `<option value="${v}"${v === ym ? " selected" : ""}>${MONTHS[d.getMonth()]} ${d.getFullYear()} — משולם ב-1 ל${MONTHS[paid.getMonth()]}</option>`;
+      }).join("")}</select>
+    </label>`;
+  if (end < m.start) {
+    return `<section class="card slipcheck"><h2>מה לבדוק בתלוש</h2>${select}<p class="muted">החודש הזה לפני תחילת העבודה.</p></section>`;
+  }
+  const ctx = {
+    month: mo,
+    stage: stageAt(m, end),
+    status: m.status,
+    hagdar: !!m.hagdarDate && m.hagdarDate < first,
+    grade: m.grade ? (m.nextGrade && m.nextGrade <= end ? m.grade + 1 : m.grade) : null,
+  };
+  const done = state.slipChecks[ym] || {};
+  const item = (key, code, name, note, sel) => `<li>
+      <label class="check"><input type="checkbox" data-slipcheck="${esc(key)}"${done[key] ? " checked" : ""}>
+        <span>${code ? `<span class="code">${esc(code)}</span> ` : ""}${esc(name)}${note ? ` <span class="muted">· ${note}</span>` : ""}</span></label>
+      ${sel ? `<a class="q" href="#/guide/slip/${sel}" aria-label="הסבר על ${esc(name)}">?</a>` : ""}
+    </li>`;
+  const mk = (key, code, name, note, sel) => ({ key, html: item(key, code, name, note, sel) });
+  const group = (title, items, note) => items.length ? `<details class="sc-group" open>
+      <summary>${esc(title)} <span class="muted">(${items.filter((it) => done[it.key]).length}/${items.length})</span></summary>
+      ${note ? `<p class="muted small">${esc(note)}</p>` : ""}
+      <ul>${items.map((it) => it.html).join("")}</ul>
+    </details>` : "";
+
+  // Header fields.
+  const statusTxt = ctx.stage >= 2 ? "קבוע" : m.status === "amach" ? "אמ\"ח" : "אמ2";
+  const ty = Math.max(0, yearsBetween(m.start, end));
+  const tYears = Math.floor(ty), tMonths = Math.floor((ty - tYears) * 12);
+  const head = [
+    mk("h.status", null, "מעמד", `צריך להיות: ${esc(statusTxt)}`, "z.personal"),
+    ctx.grade ? mk("h.grade", null, "דרגה", `צריך להיות: ${num(ctx.grade, 0)}`, "z.personal") : null,
+    mk("h.hours", null, "שעות בשבוע", `צריך להיות: ${num(ctx.hagdar ? 38.5 : 42, 1)}`, "z.personal"),
+    m.idf > 0 ? mk("h.idf", null, "ותק צה\"ל", "אמור להופיע — אם ריק, להגיש אישור שירות", "z.seniority") : null,
+    mk("h.tenure", null, "ותק אצל המעסיק (עמוד אחרון)", `בערך ${num(tYears, 0)} שנים${tMonths === 1 ? " וחודש" : tMonths ? ` ו-${num(tMonths, 0)} חודשים` : ""}`, "z.tenure"),
+  ].filter(Boolean);
+
+  const lines = pay.slip.lines.map((l, i) => ({ l, i }));
+  const fixed = lines.filter(({ l }) => lineApplies(l, ctx))
+    .map(({ l, i }) => mk(`l.${i}`, l.code, l.name, l.amount ? shekel(l.amount, 2) : rechevNote(l, ctx.grade), `l.${i}`));
+  const prev = new Date(y, mo - 2, 1);
+  const attendance = lines.filter(({ l }) => l.expect === "attendance")
+    .map(({ l, i }) => mk(`l.${i}`, l.code, l.name, "", `l.${i}`));
+  const yearly = lines.filter(({ l }) => l.expect === "periodic" && periodicThisMonth(l, ctx))
+    .map(({ l, i }) => mk(`l.${i}`, l.code, l.name, "", `l.${i}`));
+  const funds = pay.slip.funds_expect.map((f, i) => ({ f, i }))
+    .filter(({ f }) => lineApplies(f, ctx))
+    .map(({ f, i }) => mk(`f.${i}`, null, f.name, "", "z.funds"));
+  const notYet = [
+    ...lines.filter(({ l }) => ["y2", "kavua", "hagdar"].includes(l.expect) && !lineApplies(l, ctx))
+      .map(({ l }) => `<li>${l.code ? `<span class="code">${esc(l.code)}</span> ` : ""}${esc(l.name)} <span class="muted">· ${esc(notYetText(l, m))}</span></li>`),
+    ...pay.slip.funds_expect.filter((f) => f.expect !== "always" && !lineApplies(f, ctx))
+      .map((f) => `<li>${esc(f.name)} <span class="muted">· ${esc(notYetText(f, m))}</span></li>`),
+  ];
+  const gmul = lines.find(({ l }) => l.expect === "conditional");
+
+  return `<section class="card slipcheck">
+      <h2>מה לבדוק בתלוש</h2>
+      <p class="muted small">לפי הפרטים שהזנת. סמנו כל שורה שמצאתם בתלוש — הסימונים נשמרים לכל חודש בנפרד, בדפדפן הזה בלבד. <span class="q-demo">?</span> = הסבר על השורה.</p>
+      ${select}
+      ${group("בראש התלוש", head)}
+      ${group("קבוע — כל חודש", fixed)}
+      ${group(`לפי הנוכחות של ${MONTHS[prev.getMonth()]}`, attendance,
+        "מופיעות רק אם עבדתם משמרות כאלה. הכמויות — מדוח הפיצול של החודש הקודם.")}
+      ${group("תשלום שנתי בתלוש הזה", yearly)}
+      ${group("קופות (בעמוד הניכויים)", funds)}
+      ${gmul && ctx.stage >= 1 ? `<p class="muted small">אם אושר לך גמול השתלמות תעופתי: <a href="#/guide/slip/l.${gmul.i}">סמל ${esc(gmul.l.code)}</a>.</p>` : ""}
+      ${notYet.length ? `<details class="sc-group"><summary>עוד לא אמור להופיע — וזה תקין <span class="muted">(${notYet.length})</span></summary><ul class="plain">${notYet.join("")}</ul></details>` : ""}
+      <p class="muted small">הסמלים לפי התלוש החדש (מ-2025). אם הסמל שונה — התיאור הוא שקובע. <a href="#/guide">איך קוראים תלוש ←</a></p>
+    </section>`;
+}
+
+// ---- payslip & attendance-report guide ----------------------------------------
+
+function guideRoute() {
+  const parts = location.hash.replace(/^#\/?/, "").split("/");
+  return { doc: parts[1] === "pzl" ? "pzl" : "slip", sel: decodeURIComponent(parts[2] || "") };
+}
+
+const EXPECT_LABEL = {
+  always: "מתחילת העבודה",
+  y2: "משנתיים ותק",
+  kavua: "מהקביעות",
+  hagdar: "אחרי מבחן הגדר מרחב",
+  grade_lt23: "דרגות 18–22",
+  grade_ge23: "מדרגה 23",
+  attendance: "לפי הנוכחות של החודש הקודם",
+  periodic: "פעם בשנה",
+  conditional: "רק אחרי אישור",
+};
+
+function pzlRef(id) {
+  const g = state.pay.pzl;
+  const c = g.columns.find((x) => x.id === id);
+  if (c) return { sel: `c.${id}`, label: `עמודה ${c.label}` };
+  const a = g.accumulators.find((x) => x.id === id);
+  if (a) return { sel: `a.${id}`, label: `מונה ${a.label}` };
+  return null;
+}
+
+function slipRef(pzlId) {
+  const i = state.pay.slip.lines.findIndex((l) => l.pzl === pzlId);
+  return i < 0 ? null : { sel: `l.${i}`, line: state.pay.slip.lines[i] };
+}
+
+function tourBar(doc, zoneId) {
+  const zones = state.pay[doc].zones;
+  const i = zones.findIndex((z) => z.id === zoneId);
+  if (i < 0) return "";
+  const prev = zones[i - 1], next = zones[i + 1];
+  return `<div class="tour">
+      <button type="button" class="ghost"${prev ? ` data-action="gsel" data-doc="${doc}" data-sel="z.${prev.id}"` : " disabled"}>→ הקודם</button>
+      <span class="muted num">${i + 1} / ${zones.length}</span>
+      <button type="button" class="primary"${next ? ` data-action="gsel" data-doc="${doc}" data-sel="z.${next.id}"` : " disabled"}>הבא ←</button>
+    </div>`;
+}
+
+// `kicker` and `extra` are trusted HTML built by the callers; everything else is escaped here.
+function detailCard(o) {
+  return `<div class="gdetail" id="gdetail">
+      ${o.kicker ? `<div class="kicker">${o.kicker}</div>` : ""}
+      <h3>${esc(o.title)}</h3>
+      ${o.text ? `<p>${esc(o.text)}</p>` : ""}
+      ${o.extra || ""}
+      ${o.check && o.check.length ? `<div class="gcheck"><strong>מה לבדוק</strong><ul>${o.check.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>` : ""}
+      ${o.links && o.links.length ? `<p class="glinks">${o.links.join("")}</p>` : ""}
+      ${o.tour || ""}
+    </div>`;
+}
+
+function zoneDetail(doc, z) {
+  const extra = z.columns
+    ? `<dl class="gcols">${z.columns.map((c) => `<dt>${esc(c.name)}</dt><dd>${esc(c.text)}</dd>`).join("")}</dl>`
+    : "";
+  return detailCard({ title: z.title, text: z.text, extra, check: z.check, tour: tourBar(doc, z.id) });
+}
+
+function lineDetail(i) {
+  const l = state.pay.slip.lines[i];
+  const sec = state.pay.slip.sections.find((s) => s.id === l.sec);
+  const badges = [
+    l.expect && EXPECT_LABEL[l.expect] ? `<span class="badge ok">${esc(EXPECT_LABEL[l.expect])}</span>` : "",
+    l.amount ? `<span class="badge no">${shekel(l.amount, 2)}</span>` : "",
+  ].join(" ").trim();
+  const ref = l.pzl ? pzlRef(l.pzl) : null;
+  return detailCard({
+    kicker: `${l.code ? `סמל <span class="num">${esc(l.code)}</span>` : "חפשו לפי התיאור"} · ${esc(sec ? sec.title : "")}`,
+    title: l.name,
+    text: l.text,
+    extra: badges ? `<p>${badges}</p>` : "",
+    links: ref ? [`<a href="#/guide/pzl/${ref.sel}">מאיפה זה מגיע: ${esc(ref.label)} בדוח הפיצול ←</a>`] : [],
+    tour: tourBar("slip", "payments"),
+  });
+}
+
+function fieldRows(fields) {
+  return fields ? `<div class="frows">${fields.map((f) => `<div><span>${esc(f)}</span><i></i></div>`).join("")}</div>` : "";
+}
+
+function guideZone(doc, z, n, sel, inner, detail) {
+  const on = sel === `z.${z.id}`;
+  return `<section class="zone${on ? " sel" : ""}">
+      <button type="button" class="zone-head" data-action="gsel" data-doc="${doc}" data-sel="z.${z.id}" aria-expanded="${on}">
+        <span class="zn">${n}</span>${esc(z.title)}</button>
+      ${inner}
+      ${on ? zoneDetail(doc, z) : detail || ""}
+    </section>`;
+}
+
+function slipMock(sel) {
+  const g = state.pay.slip;
+  const open = state.guideOpen;
+  const zone = (id, inner) => {
+    const i = g.zones.findIndex((x) => x.id === id);
+    return guideZone("slip", g.zones[i], i + 1, sel, inner ?? fieldRows(g.zones[i].fields));
+  };
+  const payments = g.sections.map((s) => {
+    const rows = g.lines.map((l, i) => ({ l, i })).filter(({ l }) => l.sec === s.id);
+    const hasSel = rows.some(({ i }) => sel === `l.${i}`);
+    const show = open[s.id] || hasSel ? rows : rows.slice(0, 3);
+    const more = rows.length - show.length;
+    return `<div class="psec">
+        <div class="psec-head">${esc(s.title)}</div>
+        ${show.map(({ l, i }) => `
+          <button type="button" class="pline${sel === `l.${i}` ? " sel" : ""}" data-action="gsel" data-doc="slip" data-sel="l.${i}">
+            <span class="code">${esc(l.code || "—")}</span><span class="pname">${esc(l.name)}</span><span class="pamt">${l.amount ? shekel(l.amount, 2) : "···"}</span>
+          </button>
+          ${sel === `l.${i}` ? lineDetail(i) : ""}`).join("")}
+        ${more > 0 ? `<button type="button" class="pmore" data-action="gopen" data-sec="${esc(s.id)}">עוד ${more} שורות…</button>` : ""}
+        <p class="psec-note">${esc(s.text)}</p>
+      </div>`;
+  }).join("");
+  return `<div class="doc">
+      <div class="pg">עמוד 1</div>
+      ${zone("header", `<div class="frows"><div><span>רשות שדות התעופה · תלוש שכר לחודש</span><i></i></div></div>`)}
+      ${zone("payments", `<div class="ptable">${payments}</div>`)}
+      ${zone("personal")}${zone("seniority")}${zone("tax")}
+      <div class="pg">עמודים הבאים</div>
+      ${zone("mandatory")}${zone("funds")}${zone("commitments")}${zone("summary")}${zone("absences")}${zone("tenure")}
+    </div>`;
+}
+
+const PZL_TABLE_COLS = ["date", "day", "in", "out", "code", "total", "work", "ot", "m20", "m60", "ot_pct", "c100"];
+const PZL_NUM_COLS = new Set(["in", "out", "total", "work", "ot", "m20", "m60", "ot_pct", "c100"]);
+
+function pzlMock(sel) {
+  const g = state.pay.pzl;
+  const zone = (id, inner, detail) => {
+    const i = g.zones.findIndex((x) => x.id === id);
+    return guideZone("pzl", g.zones[i], i + 1, sel, inner, detail);
+  };
+  const colById = (id) => g.columns.find((c) => c.id === id);
+  const cellOf = (r, id) => (id === "ot_pct" ? r.otp : id === "c100" ? r.ot : r[id]) || "";
+  const itemDetail = (kind, item) => {
+    const ref = item.slip ? slipRef(item.id) : null;
+    const links = ref ? [`<a href="#/guide/slip/${ref.sel}">בתלוש של החודש הבא: סמל ${esc(item.slip)} — ${esc(ref.line.name)} ←</a>`]
+      : item.slip ? [`<span class="muted">בתלוש של החודש הבא: סמל ${esc(item.slip)}</span>`] : [];
+    return detailCard({ kicker: kind, title: item.label, text: item.text, links });
+  };
+  let daysDetail = "", accDetail = "";
+  const key = sel.slice(2);
+  if (sel.startsWith("c.") && colById(key)) daysDetail = itemDetail("עמודה", colById(key));
+  if (sel.startsWith("r.")) {
+    const r = g.rows.find((x) => x.id === key);
+    if (r) daysDetail = detailCard({ kicker: "שורה לדוגמה", title: `${r.date} · יום ${r.day}${r.code ? ` · ${r.code}` : ""}`, text: r.text });
+  }
+  if (sel.startsWith("a.")) {
+    const a = g.accumulators.find((x) => x.id === key);
+    if (a) accDetail = itemDetail("מונה", a);
+  }
+  const chip = (s, label) => `<button type="button" class="chipbtn${sel === s ? " sel" : ""}" data-action="gsel" data-doc="pzl" data-sel="${s}">${label}</button>`;
+  const table = `<div class="scroll"><table class="pzl">
+      <thead><tr>${PZL_TABLE_COLS.map((id) => `<th><button type="button" class="th${sel === `c.${id}` ? " sel" : ""}" data-action="gsel" data-doc="pzl" data-sel="c.${id}">${esc(colById(id).label)}</button></th>`).join("")}</tr></thead>
+      <tbody>${g.rows.map((r) => `<tr class="${sel === `r.${r.id}` ? "sel" : ""}${r.warn ? " warn" : ""}" data-action="gsel" data-doc="pzl" data-sel="r.${r.id}" tabindex="0" role="button">
+        ${PZL_TABLE_COLS.map((id) => { const v = cellOf(r, id); return `<td${PZL_NUM_COLS.has(id) && /\d/.test(v) ? ` class="num"` : ""}>${esc(v)}</td>`; }).join("")}
+      </tr>`).join("")}</tbody>
+    </table></div>
+    <p class="muted small">לחצו על כותרת עמודה או על שורה. עוד עמודות: ${g.columns.filter((c) => !PZL_TABLE_COLS.includes(c.id)).map((c) => chip(`c.${c.id}`, esc(c.label))).join(" ")}</p>`;
+  const rows2 = (a, b) => `<div class="frows"><div><span>${a}</span><i></i></div><div><span>${b}</span><i></i></div></div>`;
+  return `<div class="doc">
+      ${zone("header", `<div class="frows"><div><span>עובד · הסכם · תקופה · אחוז משרה · טיוטה / סופי</span><i></i></div></div>`)}
+      ${zone("days", table, daysDetail)}
+      ${zone("totals", rows2("סה\"כ לפני הקיזוז", "סה\"כ לאחר הקיזוז"))}
+      ${zone("accumulators", `<div class="chips">${g.accumulators.map((a) => chip(`a.${a.id}`, esc(a.label))).join("")}</div>`, accDetail)}
+      ${zone("balances", rows2("חופש: פתיחה · זכאות · ניצול · יתרה", "מחלה: פתיחה · זכאות · ניצול · יתרה"))}
+    </div>`;
+}
+
+function guideSearchResults(q) {
+  q = (q || "").trim();
+  if (!q) return "";
+  const hits = state.pay.slip.lines.map((l, i) => ({ l, i }))
+    .filter(({ l }) => (l.code || "").includes(q) || l.name.includes(q) || l.text.includes(q));
+  if (!hits.length) return `<p class="muted">לא נמצאה שורה. נסו חלק מהתיאור.</p>`;
+  return hits.slice(0, 12).map(({ l, i }) => `<button type="button" class="pline" data-action="gsel" data-doc="slip" data-sel="l.${i}">
+      <span class="code">${esc(l.code || "—")}</span><span class="pname">${esc(l.name)}</span></button>`).join("");
 }
 
 // ---- calendar (.ics) ---------------------------------------------------------
@@ -625,6 +976,10 @@ function render(keepScroll) {
   document.getElementById("view").innerHTML = pages[name]();
   document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("active", a.dataset.route === name));
   window.scrollTo(0, keepScroll ? y : 0);
+  // Guide: bring the open explanation into view (after a tap, or a link from home).
+  const detail = name === "guide" && document.getElementById("gdetail");
+  if (detail && detail.scrollIntoView) detail.scrollIntoView({ block: keepScroll ? state.guideScroll || "nearest" : "start" });
+  state.guideScroll = null;
 }
 
 function readForm(form) {
@@ -676,11 +1031,45 @@ function wireEvents() {
       render(true);
     } else if (action === "ics") {
       downloadIcs();
+    } else if (action === "gsel") {
+      const { sel } = guideRoute();
+      const next = sel === btn.dataset.sel ? "" : btn.dataset.sel; // tap again = close
+      history.replaceState(null, "", `#/guide/${btn.dataset.doc}${next ? `/${next}` : ""}`);
+      state.guideScroll = btn.closest(".tour") ? "start" : "nearest";
+      render(true);
+    } else if (action === "gopen") {
+      state.guideOpen[btn.dataset.sec] = true;
+      render(true);
+    }
+  });
+
+  view.addEventListener("keydown", (e) => {
+    const el = e.target;
+    if ((e.key === "Enter" || e.key === " ") && el.dataset && el.dataset.action && el.tagName === "TR") {
+      e.preventDefault();
+      el.click();
     }
   });
 
   view.addEventListener("change", (e) => {
     const el = e.target;
+    if (el.dataset.slipcheck) {
+      const ym = state.slipMonth || ymOf(slipMonthOptions()[1]);
+      const month = { ...(state.slipChecks[ym] || {}), [el.dataset.slipcheck]: el.checked };
+      state.slipChecks = { ...state.slipChecks, [ym]: month };
+      slipCheckStore.save(state.slipChecks);
+      const summary = el.closest("details")?.querySelector("summary .muted");
+      if (summary) {
+        const boxes = [...el.closest("ul").querySelectorAll("input[type=checkbox]")];
+        summary.textContent = `(${boxes.filter((b) => b.checked).length}/${boxes.length})`;
+      }
+      return;
+    }
+    if (el.dataset.field === "slipmonth") {
+      state.slipMonth = el.value;
+      render(true);
+      return;
+    }
     if (el.dataset.check) {
       state.checks[el.dataset.check] = el.checked;
       checkStore.save(state.checks);
@@ -703,6 +1092,9 @@ function wireEvents() {
       const q = el.value.trim();
       const terms = state.data.glossary.filter((g) => !q || g.term.includes(q) || g.text.includes(q));
       document.getElementById("glossary-list").innerHTML = glossaryItems(terms);
+    } else if (el.dataset.field === "gsearch") {
+      state.gsearch = el.value;
+      document.getElementById("gresults").innerHTML = guideSearchResults(el.value);
     }
   });
 
@@ -718,10 +1110,14 @@ function renderFooter() {
 
 async function boot() {
   document.getElementById("version-chip").textContent = "v" + VERSION;
-  try {
-    const res = await fetch("data/guide.json", { cache: "no-cache" });
+  const load = async (path) => {
+    const res = await fetch(path, { cache: "no-cache" });
     if (!res.ok) throw new Error(res.status);
-    state.data = await res.json();
+    return res.json();
+  };
+  const pay = load("data/paycheck.json").catch(() => null); // the guide degrades on its own
+  try {
+    state.data = await load("data/guide.json");
   } catch {
     document.getElementById("view").innerHTML =
       `<div class="card"><p>לא הצלחתי לטעון את הנתונים. נסו לרענן.</p></div>`;
@@ -729,6 +1125,8 @@ async function boot() {
   }
   state.profile = profileStore.load();
   state.checks = checkStore.load() || {};
+  state.slipChecks = slipCheckStore.load() || {};
+  state.pay = await pay;
   renderFooter();
   wireEvents();
   render(false);

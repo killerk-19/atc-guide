@@ -1,8 +1,11 @@
 # מדריך פקח/ית טיסה — ATC newcomer guide
 
+**Live site:** https://killerk-19.github.io/atc-guide/
+
 Unofficial static web app for new air traffic controllers at the Israel Airports
 Authority: entitlement stages, milestones, benefits by stage, yearly payments,
-funds, shift/overtime rules, glossary and a newcomer checklist. Hebrew RTL,
+funds, shift/overtime rules, glossary, a newcomer checklist, a personal
+"what to check on my payslip" list and an interactive payslip / attendance-report guide. Hebrew RTL,
 phone-first, installable (PWA).
 
 ## Privacy
@@ -10,7 +13,8 @@ phone-first, installable (PWA).
 - Static files only. No server, no accounts, no analytics, no third-party
   requests (enforced by the CSP in `index.html`).
 - Personal inputs (start date, grade…) stay in the visitor's browser
-  (`localStorage`, key `atcg.profile.v1`) and can be cleared from the page.
+  (`localStorage`: `atcg.profile.v1`; checklist ticks `atcg.checklist.v1`;
+  payslip ticks `atcg.slipcheck.v1`) and can be cleared from the page.
 - Nothing personal about the author is in this repo. Keep it that way: the data
   file holds generic rules and tariffs only.
 
@@ -22,6 +26,7 @@ phone-first, installable (PWA).
 | `css/style.css` | Light/dark tokens, RTL, phone-first layout |
 | `js/app.js` | Hash router + pages; `VERSION` constant |
 | `data/guide.json` | **All content** — stages, benefits, tariffs, shifts, glossary, checklist |
+| `data/paycheck.json` | Payslip + attendance-report (דוח פיצול) guide: zones, slip lines with stage rules, PZL columns/counters and their slip codes |
 | `sw.js` | Offline cache (network first) |
 | `manifest.webmanifest`, `icons/` | Install to home screen |
 
