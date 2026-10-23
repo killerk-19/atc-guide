@@ -320,3 +320,14 @@ table.pzl tbody tr.warn td { color: var(--warn); font-weight: 700; }
 }
 .chipbtn.sel { background: var(--accent); color: var(--surface); border-color: var(--accent); }
 @media (max-width: 380px) { .tabs a { font-size: 10px; } }
+
+/* lock screen (js/lock.js): nothing but the form is shown until the vault is opened */
+.locked .tabs, .locked main, .locked footer, .locked #logout, .locked #version-chip { display: none; }
+#logout { margin-inline-start: auto; font-size: 13px; padding: 4px 10px; color: #fff; border-color: rgba(255,255,255,.4); }
+.locked #logout { display: none; }
+.lock { max-width: 420px; margin: 12vh auto 0; padding: 0 16px; }
+.lock[hidden] { display: none; }
+.lock .card { display: flex; flex-direction: column; gap: 12px; }
+.lock label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.lock label.check { flex-direction: row; align-items: center; gap: 8px; }
+.lock input:not([type=checkbox]) { padding: 10px; font-size: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }

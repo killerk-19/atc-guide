@@ -62,3 +62,17 @@ then open http://localhost:8000.
 
 Updates: edit, commit, push — Pages redeploys on its own. `.nojekyll` makes Pages
 serve the files as they are.
+
+## Login (encrypted content)
+
+The app code and data are not served in the clear. `vault.bin` holds them AES-GCM encrypted;
+the key is PBKDF2-SHA256 (600k rounds) of `username + password`, and `js/lock.js` shows a login
+form and decrypts in the browser. One shared credential for all colleagues. "Remember me" keeps a
+non-extractable key in IndexedDB on that device; "יציאה" erases it.
+
+- Plaintext sources live in `src/` (gitignored — never commit it; keep a backup).
+- Credentials: create `.vault-credentials` (gitignored): line 1 username, line 2 password (12+ chars).
+- Rebuild after any change to `src/`: `node tools/build_vault.mjs`, then commit `vault.bin`.
+- Changing the credential = rebuild; colleagues' remembered keys stop working and they re-enter.
+- Limits: the ciphertext is public, so a weak password can be guessed offline; there is no
+  rate limit or per-user revocation. Git history before this change still holds the plaintext.
