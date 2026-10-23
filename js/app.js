@@ -5,7 +5,7 @@
 // CSP forbids inline handlers, so every interaction goes through the delegated
 // listeners at the bottom (data-action / data-field attributes).
 
-const VERSION = "1.2.2";
+const VERSION = "1.3.0";
 const STORE_KEY = "atcg.profile.v1";
 const CHECK_KEY = "atcg.checklist.v1";
 
@@ -307,8 +307,8 @@ const pages = {
     }
     const items = [
       { date: m.start, title: "תחילת עבודה ברש\"ת", text: d.stages[0].name },
-      { date: m.stageDate(1), title: "שנתיים ותק", text: "נפתחים: הסכם 91/92, משכורת י\"ג, ביגוד, הבראה, פריון, גמול השתלמות תעופתי, קרן השתלמות, קופת גמל, ביטוחי שיניים ובריאות." },
-      { date: m.stageDate(2), title: "קביעות — 5 שנות ותק", text: "מעמד קבוע; נכנסת תוספת התייעלות 3%." },
+      { date: m.stageDate(1), title: "שנתיים ותק", text: "נפתחים: הסכם 91/92, משכורת י\"ג, ביגוד, הבראה, פריון, גמול השתלמות תעופתי, קרן השתלמות, קופת גמל שכירה, ביטוחי שיניים ובריאות." },
+      { date: m.stageDate(2), title: "קביעות — 5 שנות ותק", text: "מעמד קבוע; נכנסים: תוספת התייעלות 3%, גמול א' והפרשת מעסיק 2.5% לקופת גמל עצמאית." },
     ];
     if (m.hagdarDate) items.push({ date: m.hagdarDate, title: "מעבר מבחן הגדר מרחב", text: "38.5 שעות בשבוע (במקום 42), יום עבודה 7.7 שעות (במקום 8.5), ותוספת בקרה 559.02 ₪." });
     if (m.nextGrade) {
@@ -580,7 +580,7 @@ function buildIcs(m) {
   };
   const t = today();
   if (m.stageDate(1) > t) ev("stage-2y", m.stageDate(1), "שנתיים ותק — לבדוק שההטבות נכנסו לתלוש", "הסכם 91/92, משכורת י\"ג, קרן השתלמות, קופת גמל, ביטוחים. ראו את הצ'קליסט במדריך.");
-  if (m.stageDate(2) > t) ev("stage-kavua", m.stageDate(2), "קביעות — 5 שנות ותק", "לוודא עדכון מעמד ותוספת התייעלות 3%.");
+  if (m.stageDate(2) > t) ev("stage-kavua", m.stageDate(2), "קביעות — 5 שנות ותק", "לוודא עדכון מעמד, תוספת התייעלות 3%, גמול א' וקופת גמל 2.5%.");
   if (m.nextGrade && m.nextGrade > t) ev("next-grade", m.nextGrade, `עליית דרגה${m.grade ? ` ל-${m.grade + 1}` : ""}`, "לבדוק את התלוש הראשון אחרי העלייה: שכר יסוד, אחזקת רכב.");
   state.data.periodic.filter((pm) => pm.min_years < 25).forEach((pm) => {
     ev(`pay-${pm.key}`, nextPayment(pm, m), `${pm.name} — לבדוק בתלוש`, `בתלוש ${MONTHS[pm.slip_month - 1]}.`, "FREQ=YEARLY");
