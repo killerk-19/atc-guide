@@ -5,7 +5,7 @@
 // CSP forbids inline handlers, so every interaction goes through the delegated
 // listeners at the bottom (data-action / data-field attributes).
 
-const VERSION = "1.4.0";
+const VERSION = "1.4.1";
 const STORE_KEY = "atcg.profile.v1";
 const CHECK_KEY = "atcg.checklist.v1";
 const SLIPCHECK_KEY = "atcg.slipcheck.v1";
