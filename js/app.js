@@ -5,7 +5,7 @@
 // CSP forbids inline handlers, so every interaction goes through the delegated
 // listeners at the bottom (data-action / data-field attributes).
 
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 const STORE_KEY = "atcg.profile.v1";
 const CHECK_KEY = "atcg.checklist.v1";
 
@@ -296,7 +296,7 @@ const pages = {
     }
     const items = [
       { date: m.start, title: "תחילת עבודה ברש\"ת", text: d.stages[0].name },
-      { date: m.stageDate(1), title: "שנתיים ותק", text: "נפתחים: הסכם 91/92, משכורת י\"ג, ביגוד, הבראה, פריון, קרן השתלמות, קופת גמל, ביטוחי שיניים ובריאות." },
+      { date: m.stageDate(1), title: "שנתיים ותק", text: "נפתחים: הסכם 91/92, משכורת י\"ג, ביגוד, הבראה, פריון, גמול השתלמות תעופתי, קרן השתלמות, קופת גמל, ביטוחי שיניים ובריאות." },
       { date: m.stageDate(2), title: "קביעות — 5 שנות ותק", text: "מעמד קבוע; נכנסת תוספת התייעלות 3%." },
     ];
     if (m.nextGrade) {
