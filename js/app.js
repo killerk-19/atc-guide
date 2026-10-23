@@ -5,7 +5,7 @@
 // CSP forbids inline handlers, so every interaction goes through the delegated
 // listeners at the bottom (data-action / data-field attributes).
 
-const VERSION = "1.2.1";
+const VERSION = "1.2.2";
 const STORE_KEY = "atcg.profile.v1";
 const CHECK_KEY = "atcg.checklist.v1";
 
@@ -501,7 +501,10 @@ const pages = {
           <summary>${esc(g.title)} <span class="muted">(${g.items.filter((_, i) => state.checks[`${g.when}.${i}`]).length}/${g.items.length})</span></summary>
           <ul>${g.items.map((it, i) => {
             const id = `${g.when}.${i}`;
-            return `<li><label class="check"><input type="checkbox" data-check="${esc(id)}"${state.checks[id] ? " checked" : ""}> <span>${esc(it)}</span></label></li>`;
+            const text = typeof it === "string" ? it : it.text;
+            const link = it.href && /^https:\/\//.test(it.href)
+              ? ` <a href="${esc(it.href)}" target="_blank" rel="noopener noreferrer">${esc(it.label || "קישור")}</a>` : "";
+            return `<li><label class="check"><input type="checkbox" data-check="${esc(id)}"${state.checks[id] ? " checked" : ""}> <span>${esc(text)}</span></label>${link}</li>`;
           }).join("")}</ul>
         </details>`).join("")}
       <button type="button" class="ghost" data-action="clear-checks">איפוס הסימונים</button>`;
