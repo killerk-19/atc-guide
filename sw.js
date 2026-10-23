@@ -3,7 +3,7 @@
 // Offline support. Network first, so an updated guide.json or app.js shows up on
 // the next visit; the cache is only the fallback when there is no connection.
 
-const CACHE = "atcg-v12";
+const CACHE = "atcg-v13";
 const FILES = [
   "./",
   "index.html",
@@ -31,7 +31,7 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: "no-cache" }) // revalidate: never serve a copy the browser's HTTP cache kept
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));

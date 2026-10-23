@@ -5,7 +5,7 @@
 // CSP forbids inline handlers, so every interaction goes through the delegated
 // listeners at the bottom (data-action / data-field attributes).
 
-const VERSION = "1.4.1";
+const VERSION = "1.4.2";
 const STORE_KEY = "atcg.profile.v1";
 const CHECK_KEY = "atcg.checklist.v1";
 const SLIPCHECK_KEY = "atcg.slipcheck.v1";
@@ -1132,7 +1132,18 @@ async function boot() {
   render(false);
 
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("sw.js").catch(() => { /* offline mode is optional */ });
+    // A new worker takes over by itself (skipWaiting + claim); reload once when it does, so an
+    // installed copy never keeps showing the old page. Not on the very first install.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+      .then((reg) => reg.update())
+      .catch(() => { /* offline mode is optional */ });
   }
 }
 
