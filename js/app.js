@@ -5,7 +5,7 @@
 // CSP forbids inline handlers, so every interaction goes through the delegated
 // listeners at the bottom (data-action / data-field attributes).
 
-const VERSION = "1.1.1";
+const VERSION = "1.2.0";
 const STORE_KEY = "atcg.profile.v1";
 const CHECK_KEY = "atcg.checklist.v1";
 
@@ -123,6 +123,8 @@ function model() {
     nextGrade: parseDate(p.nextGradeDate),
     nights: Math.max(0, Number(p.nightShifts) || 0),
     kids: !!p.hasChildren,
+    hagdarDate: parseDate(p.hagdarDate),
+    hagdar: !!parseDate(p.hagdarDate) && parseDate(p.hagdarDate) <= t,
     status: p.status || "auto",
   };
 }
@@ -134,6 +136,10 @@ function firstStage(b) {
 
 function benefitStatus(b, m) {
   if (b.requires === "children" && m && !m.kids) return { cls: "no", text: "להורים בלבד" };
+  if (b.requires === "hagdar") {
+    if (m && m.hagdar) return { cls: "ok", text: "מגיע לך" };
+    return { cls: "warn", text: "אחרי מבחן הגדר מרחב" };
+  }
   const first = firstStage(b);
   if (first < 0) return { cls: "no", text: "לידיעה" };
   if (!m) return { cls: "ok", text: first === 0 ? "מההתחלה" : state.data.stages[first].name };
@@ -215,6 +221,10 @@ function profileForm() {
       <label>תאריך צפוי לדרגה הבאה <span class="muted">(לא חובה)</span>
         <input type="date" name="nextGradeDate" value="${esc(p.nextGradeDate || "")}">
       </label>
+      <label>תאריך מעבר מבחן הגדר מרחב <span class="muted">(ריק = עוד לא)</span>
+        <input type="date" name="hagdarDate" value="${esc(p.hagdarDate || "")}">
+        <small>אחרי המבחן: 38.5 שעות בשבוע ותוספת בקרה.</small>
+      </label>
       <div class="row">
         <label>שנות שירות חובה
           <input type="number" name="idfYears" min="0" max="10" step="0.5" inputmode="decimal" value="${esc(p.idfYears ?? "")}">
@@ -275,6 +285,7 @@ const pages = {
         <div><span class="muted">ותק אצל המעסיק</span><strong>${num(m.tenure)} שנים</strong></div>
         <div><span class="muted">שלב זכאויות</span><strong>${esc(st.name)}</strong></div>
         ${m.grade ? `<div><span class="muted">דרגה</span><strong>${num(m.grade, 0)}</strong></div>` : ""}
+        <div><span class="muted">שעות בשבוע</span><strong>${num(m.hagdar ? 38.5 : 42, 1)}</strong></div>
       </div>
       ${countdownTiles(m)}
       <div class="card links">
@@ -299,6 +310,7 @@ const pages = {
       { date: m.stageDate(1), title: "שנתיים ותק", text: "נפתחים: הסכם 91/92, משכורת י\"ג, ביגוד, הבראה, פריון, גמול השתלמות תעופתי, קרן השתלמות, קופת גמל, ביטוחי שיניים ובריאות." },
       { date: m.stageDate(2), title: "קביעות — 5 שנות ותק", text: "מעמד קבוע; נכנסת תוספת התייעלות 3%." },
     ];
+    if (m.hagdarDate) items.push({ date: m.hagdarDate, title: "מעבר מבחן הגדר מרחב", text: "38.5 שעות בשבוע (במקום 42), יום עבודה 7.7 שעות (במקום 8.5), ותוספת בקרה 559.02 ₪." });
     if (m.nextGrade) {
       const g = m.grade ? m.grade + 1 : null;
       const notes = [];
@@ -320,6 +332,7 @@ const pages = {
           <div class="tl-text">${esc(it.text)}</div>
         </li>`).join("")}
       </ol>
+      ${m.hagdarDate ? "" : `<div class="card hint"><p>עוד לא עברת את מבחן הגדר מרחב? אחרי המעבר: 38.5 שעות בשבוע, יום של 7.7 שעות ותוספת בקרה. הזינו את התאריך בדף הבית כשתעברו.</p></div>`}
       ${m.nextGrade ? "" : `<div class="card hint"><p>הזינו בדף הבית את התאריך הצפוי לדרגה הבאה כדי לראות אותו כאן.</p></div>`}
       <button type="button" class="primary wide" data-action="ics">📅 הוספת אבני הדרך והתשלומים ליומן</button>
       ${stageList(m)}`;
@@ -447,6 +460,13 @@ const pages = {
         <p class="deadline">התיקון הבא: עד ${fmtDate(nextCorrectionDeadline())} (${esc(until(nextCorrectionDeadline()))})</p>
       </section>
       <section class="card">
+        <h2>${esc(s.work_week.title)}</h2>
+        <table><thead><tr><th></th><th>שעות בשבוע</th><th>יום עבודה</th></tr></thead><tbody>
+          ${s.work_week.rows.map((r) => `<tr><td>${esc(r.when)}</td><td class="num">${r.weekly.toFixed(1)}</td><td class="num">${r.day.toFixed(1)}</td></tr>`).join("")}
+        </tbody></table>
+        <p>${esc(s.work_week.text)}</p>
+      </section>
+      <section class="card">
         <h2>תוספות משמרת</h2>
         <table><thead><tr><th>מתי</th><th>תוספת</th></tr></thead><tbody>
           ${s.supplements.map((r) => `<tr><td>${esc(r.window)}</td><td class="num">${r.pct}%</td></tr>`).join("")}
@@ -506,6 +526,7 @@ function glossaryItems(terms) {
 function relevantChecklist(m) {
   const r = new Set(["monthly"]);
   if (m.tenure < 0.5) r.add("start");
+  if (!m.hagdar || daysBetween(m.hagdarDate, today()) < 90) r.add("hagdar");
   if (m.stage === 0 && daysBetween(today(), m.stageDate(1)) < 120) r.add("2y");
   if (m.stage === 1 && m.tenure < 2.5) r.add("2y");
   if (m.stage === 1 && daysBetween(today(), m.stageDate(2)) < 120) r.add("5y");
@@ -613,6 +634,7 @@ function readForm(form) {
     idfYears: f.get("idfYears") || "",
     recognizedYears: f.get("recognizedYears") || "",
     nightShifts: f.get("nightShifts") || "",
+    hagdarDate: f.get("hagdarDate") || "",
     hasChildren: f.get("hasChildren") === "on",
   };
 }
